@@ -23,21 +23,21 @@ fechaInicio = datetime(int(fechaProceso[0:4]), int(fechaProceso[5:7]), int(fecha
 # configuramos los parametros para acceder al datalake del storage account de Azure
 cuentaDatalake = dfParametros.first()["cuentadatalake"]
 contenedorDatalake = dfParametros.first()["contenedordatalake"]
-scopeSecreto = dfParametros.first()["secretoscopedatabricks"]
-secreto = dfParametros.first()["secretodatalakekeyvault"]
-llaveCuentaDatalake = dbutils.secrets.get(scope= scopeSecreto, key= secreto)
+# scopeSecreto = dfParametros.first()["secretoscopedatabricks"]
+# secreto = dfParametros.first()["secretodatalakekeyvault"]
+# llaveCuentaDatalake = dbutils.secrets.get(scope= scopeSecreto, key= secreto)
 
 # Configuramos spark con la cuenta de almacenamiento del datalake en Azure
-spark.conf.set(f"fs.azure.account.key.{cuentaDatalake}.dfs.core.windows.net", llaveCuentaDatalake)
+# spark.conf.set(f"fs.azure.account.key.{cuentaDatalake}.dfs.core.windows.net", llaveCuentaDatalake)
 
 # Creamos el Catalogo de Zona_Plata donde estará alojado la base de datos DataVault
-spark.sql("CREATE CATALOG IF NOT EXISTS zona_oro")
+spark.sql("CREATE CATALOG IF NOT EXISTS dwh")
 
 # Creamos la base de datos (esquema en databricks)
-spark.sql("CREATE DATABASE IF NOT EXISTS zona_oro.dwh")
+spark.sql("CREATE DATABASE IF NOT EXISTS dwh.common")
 
 # Creamos la tabla delta de hub_productos de tipo tabla no adminisrada o externa
-spark.sql("USE zona_oro.dwh")
+spark.sql("USE dwh.common")
 spark.sql(f"""
           CREATE TABLE IF NOT EXISTS dim_producto (
               dim_producto_id INT NOT NULL,
@@ -50,7 +50,7 @@ spark.sql(f"""
               fecha_registro TIMESTAMP NOT NULL
           )
           USING DELTA
-          LOCATION 'abfss://{contenedorDatalake}@{cuentaDatalake}.dfs.core.windows.net/Gold/Deltas/DWH/dim_producto'
+          LOCATION 'abfss://{contenedorDatalake}@{cuentaDatalake}.dfs.core.windows.net/Gold/Deltas/DWH/common/dim_producto'
           """)
 
 # Habilitamos el AutoOptimizer en la tabla delta para aumentar la capacidad y el rendimiento
@@ -63,6 +63,8 @@ spark.sql("""
           """)
 
 # COMMAND ----------
+
+
 
 # Procedemos a generar la lógica respectiva para tranformar y cargar los datos de una dimension tipo 1
 
@@ -100,7 +102,7 @@ dfDatosNuevosExistentes = spark.sql("""
                                         ,B.modelo
                                         ,B.precio_unitario
                                     FROM 
-                                        zona_plata.data_vault.hub_productos AS A 
+                                        data_vault.common.hub_productos AS A 
                                         INNER JOIN 
                                         (
                                         SELECT 
@@ -121,14 +123,14 @@ dfDatosNuevosExistentes = spark.sql("""
                                             ,precio_unitario
                                             ,ROW_NUMBER()OVER(PARTITION BY hk_productos ORDER BY anio_particion DESC, mes_particion DESC, fecha_registro DESC) AS desduplicador
                                             FROM 
-                                            zona_plata.data_vault.sat_productos 
+                                            data_vault.common.sat_productos 
                                         ) AS B2
                                         WHERE 
                                             B2.desduplicador = 1
                                         ) AS B
                                         ON A.hk_productos = B.hk_productos
                                     ) AS C 
-                                    INNER JOIN zona_oro.dwh.dim_producto AS D 
+                                    INNER JOIN dwh.common.dim_producto AS D 
                                         ON C.bk_id_producto = D.llave_negocio_producto
                                     WHERE
                                         (C.nombre != D.nombre)
@@ -159,7 +161,7 @@ dfTempNuevos = spark.sql(f"""
                             ,B.modelo
                             ,B.precio_unitario
                         FROM 
-                            zona_plata.data_vault.hub_productos AS A 
+                            data_vault.common.hub_productos AS A 
                             INNER JOIN 
                             (
                             SELECT 
@@ -180,14 +182,14 @@ dfTempNuevos = spark.sql(f"""
                                 ,precio_unitario
                                 ,ROW_NUMBER()OVER(PARTITION BY hk_productos ORDER BY anio_particion DESC, mes_particion DESC, fecha_registro DESC) AS desduplicador
                                 FROM 
-                                zona_plata.data_vault.sat_productos 
+                                data_vault.common.sat_productos 
                             ) AS B2
                             WHERE 
                                 B2.desduplicador = 1
                             ) AS B
                             ON A.hk_productos = B.hk_productos
                         ) AS C 
-                        LEFT JOIN zona_oro.dwh.dim_producto AS D 
+                        LEFT JOIN dwh.common.dim_producto AS D 
                             ON C.bk_id_producto = D.llave_negocio_producto
                         WHERE
                             D.llave_negocio_producto IS NULL
@@ -198,11 +200,12 @@ dfDatosNuevosExistentes = dfDatosNuevosExistentes.unionAll(dfTempNuevos)
 # Escribimos tanto los datos nuevos como los existentes con cambios usando pyspark con la función merge que es recomendada para estos casos
 
 if dfDatosNuevosExistentes.isEmpty() == False : 
-    dfDimCliente = DeltaTable.forName(spark, "zona_oro.dwh.dim_producto")
+    dfDimCliente = DeltaTable.forName(spark, "dwh.common.dim_producto")
     dfDimCliente.alias("dim").merge(
         dfDatosNuevosExistentes.alias("plata"),
         "dim.llave_negocio_producto = plata.llave_negocio_producto"
     ).whenMatchedUpdateAll().whenNotMatchedInsertAll().execute()
+
 
 
 
@@ -213,5 +216,5 @@ if dfDatosNuevosExistentes.isEmpty() == False :
 # MAGIC SELECT 
 # MAGIC   *
 # MAGIC FROM 
-# MAGIC   zona_oro.dwh.dim_producto;
+# MAGIC   dwh.common.dim_producto;
 # MAGIC

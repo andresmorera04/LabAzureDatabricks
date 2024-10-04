@@ -23,21 +23,21 @@ fechaInicio = datetime(int(fechaProceso[0:4]), int(fechaProceso[5:7]), int(fecha
 # configuramos los parametros para acceder al datalake del storage account de Azure
 cuentaDatalake = dfParametros.first()["cuentadatalake"]
 contenedorDatalake = dfParametros.first()["contenedordatalake"]
-scopeSecreto = dfParametros.first()["secretoscopedatabricks"]
-secreto = dfParametros.first()["secretodatalakekeyvault"]
-llaveCuentaDatalake = dbutils.secrets.get(scope= scopeSecreto, key= secreto)
+# scopeSecreto = dfParametros.first()["secretoscopedatabricks"]
+# secreto = dfParametros.first()["secretodatalakekeyvault"]
+# llaveCuentaDatalake = dbutils.secrets.get(scope= scopeSecreto, key= secreto)
 
 # Configuramos spark con la cuenta de almacenamiento del datalake en Azure
-spark.conf.set(f"fs.azure.account.key.{cuentaDatalake}.dfs.core.windows.net", llaveCuentaDatalake)
+# spark.conf.set(f"fs.azure.account.key.{cuentaDatalake}.dfs.core.windows.net", llaveCuentaDatalake)
 
 # Creamos el Catalogo de Zona_Plata donde estará alojado la base de datos DataVault
-spark.sql("CREATE CATALOG IF NOT EXISTS zona_oro")
+spark.sql("CREATE CATALOG IF NOT EXISTS dwh")
 
 # Creamos la base de datos (esquema en databricks)
-spark.sql("CREATE DATABASE IF NOT EXISTS zona_oro.dwh")
+spark.sql("CREATE DATABASE IF NOT EXISTS dwh.common")
 
 # Creamos la tabla delta de hub_productos de tipo tabla no adminisrada o externa
-spark.sql("USE zona_oro.dwh")
+spark.sql("USE dwh.common")
 spark.sql(f"""
           CREATE TABLE IF NOT EXISTS hec_ordenes_venta_resumen (
               dim_tiempo_id INT NOT NULL,
@@ -52,17 +52,17 @@ spark.sql(f"""
           )
           USING DELTA
           PARTITIONED BY (dim_tiempo_id)
-          LOCATION 'abfss://{contenedorDatalake}@{cuentaDatalake}.dfs.core.windows.net/Gold/Deltas/DWH/hec_ordenes_venta_resumen'
+          LOCATION 'abfss://{contenedorDatalake}@{cuentaDatalake}.dfs.core.windows.net/Gold/Deltas/DWH/common/hec_ordenes_venta_resumen'
           """)
 
 # Habilitamos el AutoOptimizer en la tabla delta para aumentar la capacidad y el rendimiento
-#spark.sql("""
-#            ALTER TABLE hec_ordenes_venta_resumen 
-#            SET TBLPROPERTIES (
-#                delta.autoOptimize.optimizeWrite = true,
-#                delta.autoOptimize.autoCompact = true
-#            );
-#          """)
+spark.sql("""
+            ALTER TABLE hec_ordenes_venta_resumen 
+            SET TBLPROPERTIES (
+                delta.autoOptimize.optimizeWrite = true,
+                delta.autoOptimize.autoCompact = true
+            );
+          """)
 
 # COMMAND ----------
 
@@ -102,7 +102,7 @@ resultado = spark.sql(f"""
                             ,B.fecha_entrega
                             ,B.total
                         FROM 
-                            zona_plata.data_vault.hub_ordenes AS A 
+                            data_vault.common.hub_ordenes AS A 
                             INNER JOIN 
                             (
                                 SELECT 
@@ -123,7 +123,7 @@ resultado = spark.sql(f"""
                                         ,total
                                         ,ROW_NUMBER()OVER(PARTITION BY hk_ordenes ORDER BY fecha_registro DESC) AS desduplicador
                                     FROM 
-                                        zona_plata.data_vault.sat_ordenes_encabezado 
+                                        data_vault.common.sat_ordenes_encabezado 
                                     WHERE 
                                         fecha_orden >= '{fechaInicio}'
                                         AND fecha_orden <= '{fechaFin}'
@@ -144,16 +144,16 @@ resultado = spark.sql(f"""
                                         ,hk_clientes
                                         ,ROW_NUMBER()OVER(PARTITION BY hk_ordenes ORDER BY fecha_registro DESC) AS desduplicador 
                                     FROM 
-                                        zona_plata.data_vault.lnk_clientes_ordenes
+                                        data_vault.common.lnk_clientes_ordenes
                                     ) AS C2 
                                 WHERE 
                                     C2.desduplicador = 1
                             ) AS C 
                                 ON A.hk_ordenes = C.hk_ordenes 
-                            INNER JOIN zona_plata.data_vault.hub_clientes AS D 
+                            INNER JOIN data_vault.common.hub_clientes AS D 
                                 ON C.hk_clientes = D.hk_clientes
                         ) AS plata 
-                        LEFT JOIN zona_oro.dwh.dim_cliente AS cli 
+                        LEFT JOIN dwh.common.dim_cliente AS cli 
                             ON plata.bk_id_cliente = cli.llave_negocio_cliente
                       """)
 
@@ -179,17 +179,17 @@ spark.sql(f"""
           )
           USING DELTA
           PARTITIONED BY (dim_tiempo_id)
-          LOCATION 'abfss://{contenedorDatalake}@{cuentaDatalake}.dfs.core.windows.net/Gold/Deltas/DWH/hec_ordenes_venta_detalle'
+          LOCATION 'abfss://{contenedorDatalake}@{cuentaDatalake}.dfs.core.windows.net/Gold/Deltas/DWH/common/hec_ordenes_venta_detalle'
           """)
 
 # Habilitamos el AutoOptimizer en la tabla delta para aumentar la capacidad y el rendimiento
-#spark.sql("""
-#            ALTER TABLE hec_ordenes_venta_detalle  
-#            SET TBLPROPERTIES (
-#                delta.autoOptimize.optimizeWrite = true,
-#                delta.autoOptimize.autoCompact = true
-#            );
-#          """)
+spark.sql("""
+            ALTER TABLE hec_ordenes_venta_detalle  
+            SET TBLPROPERTIES (
+                delta.autoOptimize.optimizeWrite = true,
+                delta.autoOptimize.autoCompact = true
+            );
+          """)
 
 # COMMAND ----------
 
@@ -220,7 +220,7 @@ resultado = spark.sql(f"""
                         ,C.descuento
                         ,current_timestamp() AS fecha_registro 
                         FROM 
-                        zona_plata.data_vault.hub_ordenes AS A 
+                        data_vault.common.hub_ordenes AS A 
                         INNER JOIN 
                         (
                             SELECT 
@@ -241,7 +241,7 @@ resultado = spark.sql(f"""
                                     ,total
                                     ,ROW_NUMBER()OVER(PARTITION BY hk_ordenes ORDER BY fecha_registro DESC) AS desduplicador
                                 FROM 
-                                    zona_plata.data_vault.sat_ordenes_encabezado 
+                                    data_vault.common.sat_ordenes_encabezado 
                                 WHERE 
                                     fecha_orden >= '{fechaInicio}'
                                     AND fecha_orden <= '{fechaFin}'
@@ -270,7 +270,7 @@ resultado = spark.sql(f"""
                                 ,descuento
                                 ,ROW_NUMBER()OVER(PARTITION BY hk_ordenes, id_linea_detalle ORDER BY fecha_registro DESC) AS desduplicador
                             FROM 
-                                zona_plata.data_vault.sat_ordenes_detalle
+                                data_vault.common.sat_ordenes_detalle
                             ) AS C2 
                             WHERE 
                             C2.desduplicador = 1
@@ -288,23 +288,25 @@ resultado = spark.sql(f"""
                                     ,hk_clientes
                                     ,ROW_NUMBER()OVER(PARTITION BY hk_ordenes ORDER BY fecha_registro DESC) AS desduplicador 
                                 FROM 
-                                    zona_plata.data_vault.lnk_clientes_ordenes
+                                    data_vault.common.lnk_clientes_ordenes
                                 ) AS D2 
                             WHERE 
                                 D2.desduplicador = 1 
                         ) AS D 
                             ON A.hk_ordenes = D.hk_ordenes 
-                        INNER JOIN zona_plata.data_vault.hub_clientes AS E
+                        INNER JOIN data_vault.common.hub_clientes AS E
                             ON D.hk_clientes = E.hk_clientes 
-                        INNER JOIN zona_plata.data_vault.hub_productos AS F 
+                        INNER JOIN data_vault.common.hub_productos AS F 
                             ON C.id_producto = F.bk_id_producto
                         LEFT JOIN zona_oro.dwh.dim_cliente AS G 
                             ON E.bk_id_cliente = G.llave_negocio_cliente 
-                        LEFT JOIN zona_oro.dwh.dim_producto AS H 
+                        LEFT JOIN dwh.common.dim_producto AS H 
                             ON F.bk_id_producto = H.llave_negocio_producto
                       """)
 
 resultado.show()
+
+
 
 # COMMAND ----------
 

@@ -9,6 +9,9 @@ from datetime import *
 # Desplegamos la sesión de spark para el trabajo distribuido de los nodos del cluster
 spark = SparkSession.builder.appName("PipelineDimCliente").config("spark.sql.extensions", "io.delta.sql.DeltasAdministradasparkSessionExtension").config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog").config("fs.azure", "fs.azure.NativeAzureFileSystem").getOrCreate()
 
+# Nos conectamos a la base de datos que tiene la tabla de parametros
+
+
 # Leemos el JSON con los parámetros del notebook
 cuentaDatalake = "stacownlab30"
 contenedorDatalake = "datalake"
@@ -316,6 +319,7 @@ if dfDatosNuevosExistentes.isEmpty() == False :
     dfDimCliente.alias("dim").merge(
         dfDatosNuevosExistentes.alias("plata"),
         "dim.llave_negocio_cliente = plata.llave_negocio_cliente"
+        ,
     ).whenMatchedUpdateAll().whenNotMatchedInsertAll().execute()
 
 

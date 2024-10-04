@@ -131,8 +131,8 @@ spark.sql("""
 # procedemos a armar la ruta de la zona de bronce donde estan los archivos parquet
 # dado que productos es una tabla maestra, se debe tomar el archivo más reciente en base a la fechaProceso
 # rutaBronceProductos = "abfss://"+contenedorDatalake+"@"+cuentaDatalake+".dfs.core.windows.net/Bronze/devvertixddnsnet/bikestores/sales/customers/{"
-iterador = str((fechaInicio - timedelta(days=1)))[0:10].replace("-", "")
-limiteWhile = str((fechaFin + timedelta(days=1)))[0:10].replace("-", "")
+iterador = str((fechaInicio - timedelta(days=1)))[0:10].replace("-", "") # 20240730
+limiteWhile = str((fechaFin + timedelta(days=1)))[0:10].replace("-", "") # 20240818
 
 esquemaOrdenes = StructType([
     StructField("order_id", IntegerType()),

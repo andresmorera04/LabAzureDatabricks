@@ -83,7 +83,7 @@ spark.sql("""
 
 # procedemos a armar la ruta de la zona de bronce donde estan los archivos parquet
 # dado que productos es una tabla maestra, se debe tomar el archivo más reciente en base a la fechaProceso
-# rutaBronceProductos = "abfss://"+contenedorDatalake+"@"+cuentaDatalake+".dfs.core.windows.net/Bronze/devvertixddnsnet/bikestores/sales/customers/{"
+# rutaBronceProductos = "abfss://"+contenedorDatalake+"@"+cuentaDatalake+".dfs.core.windows.net/Bronze/devvertixddnsnet/bikestores/sales/customers/{2023, 2024, 2025}/**"
 iterador = fechaInicio.year
 listaRutasParquets = []
 while iterador <= fechaFin.year:

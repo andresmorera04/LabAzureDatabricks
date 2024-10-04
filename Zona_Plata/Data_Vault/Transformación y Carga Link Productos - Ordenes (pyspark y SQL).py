@@ -22,7 +22,7 @@ from delta import *
 from datetime import * 
 
 # Desplegamos la sesión de spark para el trabajo distribuido de los nodos del cluster
-spark = SparkSession.builder.appName("PipelineLinkProductosOrdenes").config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension").config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog").config("fs.azure", "fs.azure.NativeAzureFileSystem").getOrCreate()
+spark = SparkSession.builder.appName("PipelineLinkProductosOrdenes").config("spark.sql.extensions", "io.delta.sql.DeltasAdministradasparkSessionExtension").config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog").config("fs.azure", "fs.azure.NativeAzureFileSystem").getOrCreate()
 
 # Leemos el JSON con los parámetros del notebook
 cuentaDatalake = "stacownlab30"
@@ -49,27 +49,28 @@ contenedorDatalake = dfParametros.first()["contenedordatalake"]
 spark.sql("CREATE CATALOG IF NOT EXISTS data_vault")
 
 # Creamos la base de datos (esquema en databricks)
-spark.sql("CREATE DATABASE IF NOT EXISTS data_vault.common")
+spark.sql(f"""CREATE DATABASE IF NOT EXISTS data_vault.cri 
+          MANAGED LOCATION 'abfss://{contenedorDatalake}@{cuentaDatalake}.dfs.core.windows.net/Silver/DeltasAdministradas/Data_Vault/cri'""")
 
-# Creamos la tabla delta de hub_productos de tipo tabla no adminisrada o externa
-spark.sql("USE data_vault.common")
-spark.sql(f"""
+existe = spark.sql("""SELECT COUNT(*) AS existe FROM data_vault.information_schema.tables WHERE table_name = 'lnk_productos_ordenes' AND table_schema = 'cri'""").first()["existe"]
+
+if existe == 0: 
+    # Creamos la tabla delta de hub_productos de tipo tabla no adminisrada o externa
+    spark.sql("USE data_vault.cri")
+    spark.sql(f"""
           CREATE TABLE IF NOT EXISTS lnk_productos_ordenes (
               hk_productos_ordenes BINARY,
               hk_productos BINARY,
               hk_ordenes BINARY,
-              fecha_registro TIMESTAMP,
-              nombre_fuente STRING,
-              anio_particion INT,
-              mes_particion INT
+              fecha_registro DATE,
+              nombre_fuente STRING
           )
           USING DELTA
-          PARTITIONED BY (anio_particion, mes_particion)
-          LOCATION 'abfss://{contenedorDatalake}@{cuentaDatalake}.dfs.core.windows.net/Silver/Deltas/Data_Vault/common/lnk_productos_ordenes'
+          CLUSTER BY (fecha_registro)
           """)
-
-# Habilitamos el AutoOptimizer en la tabla delta para aumentar la capacidad y el rendimiento
-spark.sql("""
+    
+    # Habilitamos el AutoOptimizer en la tabla delta para aumentar la capacidad y el rendimiento
+    spark.sql("""
             ALTER TABLE lnk_productos_ordenes
             SET TBLPROPERTIES (
                 delta.autoOptimize.optimizeWrite = true,
@@ -121,7 +122,7 @@ while int(iterador) <= int(limiteWhile):
         dfParquetsBronceOrdenes = dfParquetsBronceOrdenes.unionAll(dfTemp)
         dfParquetsBronceLineas = dfParquetsBronceLineas.unionAll(dfTemp2)
     except Exception as e:
-        print(f"Ocurrio un error: posiblemente el parquet {rutaBronceParquets} no existe o es otro error: {e}")
+        print(f"Ocurrio un error: posiblemente el parquet {rutaBronceParquets} no existe")
 
     fechaTemp = date(int(iterador[0:4]), int(iterador[4:6]), int(iterador[6:8]))
     iterador = str(fechaTemp + timedelta(days=1))[0:10].replace("-", "")
@@ -139,7 +140,7 @@ dfParquetsBronceLineas.createOrReplaceTempView("lineas_ordenes_bronce")
 # COMMAND ----------
 
 resultado = spark.sql(f"""
-                        INSERT INTO lnk_productos_ordenes (hk_productos, hk_ordenes, hk_productos_ordenes, fecha_registro, nombre_fuente, anio_particion, mes_particion)
+                        INSERT INTO lnk_productos_ordenes (hk_productos, hk_ordenes, hk_productos_ordenes, fecha_registro, nombre_fuente )
                         SELECT 
                         D.hk_productos 
                         ,E.hk_ordenes

@@ -24,21 +24,21 @@ fechaInicio = datetime(int(fechaProceso[0:4]), int(fechaProceso[5:7]), int(fecha
 # configuramos los parametros para acceder al datalake del storage account de Azure
 cuentaDatalake = dfParametros.first()["cuentadatalake"]
 contenedorDatalake = dfParametros.first()["contenedordatalake"]
-scopeSecreto = dfParametros.first()["secretoscopedatabricks"]
-secreto = dfParametros.first()["secretodatalakekeyvault"]
-llaveCuentaDatalake = dbutils.secrets.get(scope= scopeSecreto, key= secreto)
+# scopeSecreto = dfParametros.first()["secretoscopedatabricks"]
+# secreto = dfParametros.first()["secretodatalakekeyvault"]
+# llaveCuentaDatalake = dbutils.secrets.get(scope= scopeSecreto, key= secreto)
 
 # Configuramos spark con la cuenta de almacenamiento del datalake en Azure
-spark.conf.set(f"fs.azure.account.key.{cuentaDatalake}.dfs.core.windows.net", llaveCuentaDatalake)
+# spark.conf.set(f"fs.azure.account.key.{cuentaDatalake}.dfs.core.windows.net", llaveCuentaDatalake)
 
 # Creamos el Catalogo de Zona_Plata donde estará alojado la base de datos DataVault
-spark.sql("CREATE CATALOG IF NOT EXISTS zona_oro")
+spark.sql("CREATE CATALOG IF NOT EXISTS dwh")
 
 # Creamos la base de datos (esquema en databricks)
-spark.sql("CREATE DATABASE IF NOT EXISTS zona_oro.dwh")
+spark.sql("CREATE DATABASE IF NOT EXISTS dwh.common")
 
 # Creamos la tabla delta de hub_productos de tipo tabla no adminisrada o externa
-spark.sql("USE zona_oro.dwh")
+spark.sql("USE dwh.common")
 spark.sql(f"""
           CREATE TABLE IF NOT EXISTS dim_tiempo (
               dim_tiempo_id INT NOT NULL,
@@ -51,17 +51,17 @@ spark.sql(f"""
               fecha_registro TIMESTAMP NOT NULL
           )
           USING DELTA
-          LOCATION 'abfss://{contenedorDatalake}@{cuentaDatalake}.dfs.core.windows.net/Gold/Deltas/DWH/dim_tiempo'
+          LOCATION 'abfss://{contenedorDatalake}@{cuentaDatalake}.dfs.core.windows.net/Gold/Deltas/DWH/common/dim_tiempo'
           """)
 
 # Habilitamos el AutoOptimizer en la tabla delta para aumentar la capacidad y el rendimiento
-#spark.sql("""
-#            ALTER TABLE dim_tiempo 
-#            SET TBLPROPERTIES (
-#                delta.autoOptimize.optimizeWrite = true,
-#                delta.autoOptimize.autoCompact = true
-#            );
-#          """)
+spark.sql("""
+            ALTER TABLE dim_tiempo 
+            SET TBLPROPERTIES (
+                delta.autoOptimize.optimizeWrite = true,
+                delta.autoOptimize.autoCompact = true
+            );
+          """)
 
 # COMMAND ----------
 
