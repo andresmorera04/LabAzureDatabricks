@@ -55,19 +55,11 @@ medallaPlata = dfParametros.select("Valor").where(col("Clave") == "MedallaPlata"
 fechaFin = datetime(int(fechaProceso[0:4]), int(fechaProceso[5:7]), int(fechaProceso[8:10]), 23, 59, 59)
 fechaInicio = datetime(int(fechaProceso[0:4]), int(fechaProceso[5:7]), int(fechaProceso[8:10]), 00, 00, 00) - timedelta(days= int(diascargar))
 
-# Creamos el Catalogo de Zona_Plata donde estará alojado la base de datos DataVault
-# spark.sql("CREATE CATALOG IF NOT EXISTS data_vault")
-
-# Creamos la base de datos (esquema en databricks)
-# spark.sql(f"""CREATE DATABASE IF NOT EXISTS data_vault.reg 
-#          MANAGED LOCATION 'abfss://{contenedorDatalake}@{cuentaDatalake}.dfs.core.windows.net/{medallaPlata}/DeltasAdministradas/Data_Vault/reg'
-#          """)
-
 # Creamos la tabla delta de hub_productos de tipo tabla no adminisrada o externa
-existeTabla = spark.sql("""SELECT COUNT(*) AS existe FROM data_vault.information_schema.tables WHERE table_name = 'Hub_Cli_Clientes' AND table_schema = 'reg'""").first()["existe"]
+existeTabla = spark.sql("""SELECT COUNT(*) AS existe FROM DataVault.information_schema.tables WHERE table_name = 'Hub_Cli_Clientes' AND table_schema = 'reg'""").first()["existe"]
 
 if existeTabla == 0:
-    spark.sql("USE data_vault.reg")
+    spark.sql("USE DataVault.reg")
     spark.sql(f"""
           CREATE TABLE IF NOT EXISTS Hub_Cli_Clientes (
               Hk_Clientes BINARY NOT NULL COMMENT 'Hash Key de la tabla Hub',
@@ -154,7 +146,7 @@ dfClientesBronce.createOrReplaceTempView("tmp_clientes_bronce")
 # En base a Spark SQL se realiza la lógica para transformar, curar, aplicar regla de negocio y posteriormente
 # hacer la carga de datos 
 resultado = spark.sql("""
-                    INSERT INTO data_vault.reg.Hub_Cli_Clientes (Hk_Clientes, Bk_IdCliente, FechaRegistro, NombreFuente) 
+                    INSERT INTO DataVault.reg.Hub_Cli_Clientes (Hk_Clientes, Bk_IdCliente, FechaRegistro, NombreFuente) 
                     SELECT 
                     B.Hk_Clientes
                     ,B.Bk_IdCliente
@@ -183,7 +175,7 @@ resultado = spark.sql("""
                         END
                         ) AS A
                     ) AS B 
-                    LEFT JOIN data_vault.reg.Hub_Cli_Clientes AS C 
+                    LEFT JOIN DataVault.reg.Hub_Cli_Clientes AS C 
                         ON B.Bk_IdCliente = C.Bk_IdCliente
                     WHERE 
                     C.Bk_IdCliente IS NULL 
@@ -191,10 +183,3 @@ resultado = spark.sql("""
 
 resultado.show()
 
-
-# COMMAND ----------
-
-# MAGIC %sql
-# MAGIC SELECT 
-# MAGIC   *
-# MAGIC FROM data_vault.reg.Hub_Cli_Clientes

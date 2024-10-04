@@ -41,16 +41,15 @@ fechaFin = datetime(int(fechaProceso[0:4]), int(fechaProceso[5:7]), int(fechaPro
 fechaInicio = datetime(int(fechaProceso[0:4]), int(fechaProceso[5:7]), int(fechaProceso[8:10]), 00, 00, 00) - timedelta(days= int(diascargar))
 
 # Creamos la tabla delta de hub_productos de tipo tabla no adminisrada o externa
-existeTabla = spark.sql("""SELECT COUNT(*) AS existe FROM DataVault.information_schema.tables WHERE table_name = 'Sat_Cli_Clientes_telefonos' AND table_schema = 'reg'""").first()["existe"]
+existeTabla = spark.sql("""SELECT COUNT(*) AS existe FROM DataVault.information_schema.tables WHERE table_name = 'Hub_Cli_Clientes' AND table_schema = 'reg'""").first()["existe"]
 
-if existeTabla == 0: 
+if existeTabla == 0:
     # Creamos la tabla delta de hub_productos de tipo tabla no adminisrada o externa
     spark.sql("USE DataVault.reg")
     spark.sql(f"""
-          CREATE TABLE IF NOT EXISTS Sat_Cli_Clientes_telefonos (
+          CREATE TABLE IF NOT EXISTS Sat_Cli_Clientes_correos (
               hk_clientes BINARY,
-              codigo_pais STRING,
-              numero_telefono INT,
+              correo_electronico STRING,
               hk_diff BINARY,
               fecha_registro DATE,
               nombre_fuente STRING
@@ -59,9 +58,9 @@ if existeTabla == 0:
           CLUSTER BY (fecha_registro)
           """)
     
-    # Habilitamos el AutoOptimizer en la tabla delta para aumentar la capacidad y el rendimiento 
+    # Habilitamos el AutoOptimizer en la tabla delta para aumentar la capacidad y el rendimiento
     spark.sql("""
-            ALTER TABLE Sat_Cli_Clientes_telefonos
+            ALTER TABLE Sat_Cli_Clientes_correos
             SET TBLPROPERTIES (
                 delta.autoOptimize.optimizeWrite = true,
                 delta.autoOptimize.autoCompact = true
@@ -100,11 +99,10 @@ dfClientesBronce.createOrReplaceTempView("clientes_bronce")
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC INSERT INTO Sat_Cli_Clientes_telefonos (hk_clientes, codigo_pais, numero_telefono, hk_diff, fecha_registro, nombre_fuente ) 
+# MAGIC INSERT INTO Sat_Cli_Clientes_correos (hk_clientes, correo_electronico, hk_diff, fecha_registro, nombre_fuente )
 # MAGIC SELECT 
 # MAGIC   A.hk_clientes
-# MAGIC   ,A.codigo_pais
-# MAGIC   ,A.numero_telefono 
+# MAGIC   ,A.correo_electronico
 # MAGIC   ,A.hk_diff
 # MAGIC   ,current_date() AS fecha_registro
 # MAGIC   ,'Bronze/devvertixddnsnet/bikestores/sales/customers' AS nombre_fuente
@@ -117,77 +115,31 @@ dfClientesBronce.createOrReplaceTempView("clientes_bronce")
 # MAGIC       ELSE customer_id 
 # MAGIC     END) AS STRING)
 # MAGIC     ,256) AS BINARY) AS hk_clientes
-# MAGIC     ,SUBSTRING(
-# MAGIC         (CASE 
-# MAGIC         WHEN isnull(phone) = TRUE THEN ''
-# MAGIC         ELSE phone
-# MAGIC       END)
-# MAGIC       ,1, charindex(')', (CASE 
-# MAGIC         WHEN isnull(phone) = TRUE THEN ''
-# MAGIC         ELSE phone
-# MAGIC     END)) ) AS codigo_pais 
 # MAGIC     ,CASE 
-# MAGIC     WHEN ISNULL(CAST(
-# MAGIC       REPLACE(
-# MAGIC       SUBSTRING((CASE 
-# MAGIC         WHEN isnull(phone) = TRUE THEN ''
-# MAGIC         ELSE phone
-# MAGIC       END)
-# MAGIC       ,(charindex(')', (CASE 
-# MAGIC         WHEN isnull(phone) = TRUE THEN ''
-# MAGIC         ELSE phone
-# MAGIC       END)) + 1)
-# MAGIC       ,25), '-', '') 
-# MAGIC     AS INT ) 
-# MAGIC     ) = TRUE THEN -1 
-# MAGIC     ELSE  CAST(
-# MAGIC       REPLACE(
-# MAGIC       SUBSTRING((CASE 
-# MAGIC         WHEN isnull(phone) = TRUE THEN ''
-# MAGIC         ELSE phone
-# MAGIC       END)
-# MAGIC       ,(charindex(')', (CASE 
-# MAGIC         WHEN isnull(phone) = TRUE THEN ''
-# MAGIC         ELSE phone
-# MAGIC       END)) + 1)
-# MAGIC       ,25), '-', '') 
-# MAGIC     AS INT )
-# MAGIC     END AS numero_telefono
-# MAGIC     ,CAST(sha2(
-# MAGIC       (CAST((CASE 
-# MAGIC         WHEN ISNULL(customer_id) = TRUE THEN -1
-# MAGIC         ELSE customer_id 
-# MAGIC       END) AS STRING) || 
-# MAGIC       SUBSTRING(
-# MAGIC         (CASE 
-# MAGIC         WHEN isnull(phone) = TRUE THEN ''
-# MAGIC         ELSE phone
-# MAGIC       END)
-# MAGIC       ,1, charindex(')', (CASE 
-# MAGIC         WHEN isnull(phone) = TRUE THEN ''
-# MAGIC         ELSE phone
-# MAGIC       END)) ) || REPLACE(
-# MAGIC       SUBSTRING((CASE 
-# MAGIC         WHEN isnull(phone) = TRUE THEN ''
-# MAGIC         ELSE phone
-# MAGIC       END)
-# MAGIC       ,(charindex(')', (CASE 
-# MAGIC         WHEN isnull(phone) = TRUE THEN ''
-# MAGIC         ELSE phone
-# MAGIC       END)) + 1)
-# MAGIC       ,25), '-', '') )
-# MAGIC       , 512)
-# MAGIC     AS BINARY) AS hk_diff
+# MAGIC       WHEN ISNULL(email) = TRUE THEN 'No Definido' 
+# MAGIC       ELSE email
+# MAGIC     END AS correo_electronico 
+# MAGIC     ,CAST(
+# MAGIC     sha2((CAST((CASE 
+# MAGIC       WHEN ISNULL(customer_id) = TRUE THEN -1
+# MAGIC       ELSE customer_id 
+# MAGIC     END) AS STRING) || 
+# MAGIC     CASE 
+# MAGIC       WHEN ISNULL(email) = TRUE THEN 'No Definido' 
+# MAGIC       ELSE email
+# MAGIC     END ), 512)
+# MAGIC     AS BINARY) AS hk_diff  
 # MAGIC   FROM 
-# MAGIC     clientes_bronce 
+# MAGIC     clientes_bronce
 # MAGIC   WHERE 
-# MAGIC     phone IS NOT NULL 
-# MAGIC     AND phone != 'NULL'
+# MAGIC     email IS NOT NULL
+# MAGIC     OR email != 'NULL'
 # MAGIC   ) AS A 
-# MAGIC   LEFT JOIN Sat_Cli_Clientes_telefonos AS B 
+# MAGIC   LEFT JOIN Sat_Cli_Clientes_correos AS B 
 # MAGIC     ON A.hk_clientes = B.hk_clientes AND A.hk_diff = B.hk_diff
 # MAGIC WHERE 
 # MAGIC   B.hk_clientes IS NULL 
 # MAGIC   AND B.hk_diff IS NULL 
 # MAGIC ;
+# MAGIC
 # MAGIC

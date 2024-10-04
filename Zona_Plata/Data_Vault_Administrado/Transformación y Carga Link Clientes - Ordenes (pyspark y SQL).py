@@ -22,7 +22,7 @@ from delta import *
 from datetime import * 
 
 # Desplegamos la sesión de spark para el trabajo distribuido de los nodos del cluster
-spark = SparkSession.builder.appName("PipelineLinkClientesOrdenes").config("spark.sql.extensions", "io.delta.sql.DeltasAdministradasparkSessionExtension").config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog").config("fs.azure", "fs.azure.NativeAzureFileSystem").getOrCreate()
+# spark = SparkSession.builder.appName("PipelineLinkClientesOrdenes").config("spark.sql.extensions", "io.delta.sql.# DeltasAdministradasparkSessionExtension").config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog").# config("fs.azure", "fs.azure.NativeAzureFileSystem").getOrCreate()
 
 # Leemos el JSON con los parámetros del notebook
 cuentaDatalake = "stacownlab30"

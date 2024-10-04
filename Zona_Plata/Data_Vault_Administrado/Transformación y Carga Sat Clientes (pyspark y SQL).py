@@ -21,7 +21,6 @@ from pyspark.sql.types import *
 from delta import *
 from datetime import * 
 
-
 # Modificamos algunos valores de las propiedades de la sesión para mejorarla 
 spark.conf.set("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
 spark.conf.set("fs.azure", "fs.azure.NativeAzureFileSystem")
@@ -56,18 +55,12 @@ medallaPlata = dfParametros.select("Valor").where(col("Clave") == "MedallaPlata"
 fechaFin = datetime(int(fechaProceso[0:4]), int(fechaProceso[5:7]), int(fechaProceso[8:10]), 23, 59, 59)
 fechaInicio = datetime(int(fechaProceso[0:4]), int(fechaProceso[5:7]), int(fechaProceso[8:10]), 00, 00, 00) - timedelta(days= int(diascargar))
 
-# Creamos el Catalogo de Zona_Plata donde estará alojado la base de datos DataVault
-spark.sql("CREATE CATALOG IF NOT EXISTS data_vault")
+# Creamos la tabla delta de hub_productos de tipo tabla no adminisrada o externa
+existeTabla = spark.sql("""SELECT COUNT(*) AS existe FROM DataVault.information_schema.tables WHERE table_name = 'Sat_Cli_Clientes' AND table_schema = 'reg'""").first()["existe"]
 
-# Creamos la base de datos (esquema en databricks)
-spark.sql(f"""CREATE DATABASE IF NOT EXISTS data_vault.reg 
-          MANAGED LOCATION 'abfss://{contenedorDatalake}@{cuentaDatalake}.dfs.core.windows.net/{medallaPlata}/DeltasAdministradas/Data_Vault/reg'""")
-
-existe = spark.sql("""SELECT COUNT(*) AS existe FROM data_vault.information_schema.tables WHERE table_name = 'Sat_Cli_Clientes' AND table_schema = 'reg'""").first()["existe"] 
-
-if existe == 0: 
+if existeTabla == 0: 
     # Creamos la tabla delta de hub_productos de tipo tabla no adminisrada o externa
-    spark.sql("USE data_vault.reg")
+    spark.sql("USE DataVault.reg")
     spark.sql(f"""
           CREATE TABLE IF NOT EXISTS Sat_Cli_Clientes (
               Hk_Clientes BINARY NOT NULL COMMENT 'Llave HashKey de Clientes',
@@ -204,10 +197,3 @@ dfClientesBronce.createOrReplaceTempView("tmp_clientes_bronce")
 # MAGIC
 # MAGIC
 # MAGIC
-
-# COMMAND ----------
-
-# MAGIC %sql
-# MAGIC SELECT 
-# MAGIC   *
-# MAGIC FROM data_vault.reg.Sat_Cli_Clientes
