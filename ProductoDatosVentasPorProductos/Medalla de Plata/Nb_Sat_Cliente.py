@@ -56,17 +56,21 @@ spark.sql(f"USE {catalogoDataVault}.reg")
 
 # Creamos la tabla Delta Hub para almacenar los datos, siempre y cuando no exista
 spark.sql(f"""
-          CREATE TABLE IF NOT EXISTS Sat_Cli_Cliente_Telefonos
+          CREATE TABLE IF NOT EXISTS Sat_Cli_Cliente 
           (
               Hk_Cliente BINARY NOT NULL COMMENT 'Llave Hash calculada a partir de la llave de negocio que identifica de forma unica cada Cliente'
               ,HkDiff BINARY NOT NULL COMMENT 'Llave Hash calculada con el objetivo controlar cambios en las demas variables de los clientes, para agregar solo los valores cambiantes'
               ,FechaRegistro TIMESTAMP NOT NULL COMMENT 'Fecha en la que almacena el registro en la tabla'
-              ,PaisTelefono STRING NOT NULL COMMENT 'Pais del telefono del Cliente'
-              ,NumeroTelefono INT NOT NULL COMMENT 'Numero de telefono del Cliente'
+              ,Nombre STRING NOT NULL COMMENT 'Nombre del Cliente'
+              ,Apellido STRING NOT NULL COMMENT 'Apellido del Cliente'
+              ,CalleUbicacion STRING NOT NULL COMMENT 'Calle de la Ubicacion del Cliente'
+              ,CiudadUbicacion STRING NOT NULL COMMENT 'Ciudad de la Ubicacion del Cliente'
+              ,EstadoUbicacion STRING NOT NULL COMMENT 'Estado de la Ubicacion del Cliente'
+              ,CodigoPostal STRING NOT NULL COMMENT 'Codigo Postal de la Ubicacion del Cliente'
               ,FuenteDatos STRING NOT NULL COMMENT 'Fuente de donde prviene el dato en la medalla de bronce'
           )
           USING DELTA
-          COMMENT 'Medalla: Plata, Descripcion: Tabla Sat del Modelo de Data Vault con los datos de Telefonos de los Clientes'
+          COMMENT 'Medalla: Plata, Descripcion: Tabla Sat del Modelo de Data Vault con los datos descriptivos de los Clientes'
           TBLPROPERTIES ('delta.autoOptimize.optimizeWrite' = true, 'delta.autoOptimize.autoCompact' = true)
           CLUSTER BY (FechaRegistro)
           """)
@@ -77,30 +81,43 @@ dfRegistrosNuevos = spark.sql(f"""
                                 B.Hk_Cliente
                                 ,B.HkDiff
                                 ,B.FechaRegistro
-                                ,B.PaisTelefono
-                                ,B.NumeroTelefono
+                                ,B.Nombre
+                                ,B.Apellido
+                                ,B.CalleUbicacion
+                                ,B.CiudadUbicacion
+                                ,B.EstadoUbicacion
+                                ,B.CodigoPostal
                                 ,B.FuenteDatos
                             FROM 
                                 (
                                 SELECT 
                                     CAST(SHA2(CAST(A.customer_id AS STRING), 256) AS BINARY) AS Hk_Cliente 
-                                    ,CAST(SHA2((CAST(A.customer_id AS STRING) || A.PaisTelefono || CAST(A.NumeroTelefono AS STRING)), 512) AS BINARY) AS HkDiff
+                                    ,CAST(SHA2((
+                                        CAST(A.customer_id AS STRING) || A.Nombre || A.Apellido || A.CalleUbicacion || 
+                                        A.CiudadUbicacion || A.EstadoUbicacion || A.CodigoPostal
+                                    ), 512) AS BINARY) AS HkDiff
                                     ,current_timestamp() AS FechaRegistro
-                                    ,A.PaisTelefono
-                                    ,A.NumeroTelefono
+                                    ,A.Nombre
+                                    ,A.Apellido
+                                    ,A.CalleUbicacion
+                                    ,A.CiudadUbicacion
+                                    ,A.EstadoUbicacion
+                                    ,A.CodigoPostal
                                     ,'{rutaBronceCliente}' AS FuenteDatos
                                 FROM 
                                     (
                                     SELECT 
                                         customer_id
-                                        ,LEFT(phone, 5) AS PaisTelefono
-                                        ,CAST(REPLACE(TRIM(SUBSTRING(phone, 6, LEN(phone))), '-', '') AS INT) AS NumeroTelefono
+                                        ,COALESCE(NULLIF(TRIM(first_name), ''), 'No Definido') AS Nombre
+                                        ,COALESCE(NULLIF(TRIM(last_name), ''), 'No Definido') AS Apellido
+                                        ,COALESCE(NULLIF(TRIM(street), ''), 'No Definido') AS CalleUbicacion
+                                        ,COALESCE(NULLIF(TRIM(city), ''), 'No Definido') AS CiudadUbicacion
+                                        ,COALESCE(NULLIF(TRIM(state), ''), 'No Definido') AS EstadoUbicacion
+                                        ,COALESCE(NULLIF(TRIM(zip_code), ''), 'No Definido') AS CodigoPostal
                                     FROM 
                                         tmpClientesBronce
-                                    WHERE 
-                                    phone IS NOT NULL 
                                     GROUP BY 
-                                    ALL 
+                                        ALL 
                                     ) AS A
                                 ) AS B 
                                 LEFT JOIN 
@@ -116,7 +133,7 @@ dfRegistrosNuevos = spark.sql(f"""
                                         ,FechaRegistro
                                         ,ROW_NUMBER()OVER(PARTITION BY Hk_Cliente ORDER BY FechaRegistro DESC) AS UltimoRegistro
                                     FROM 
-                                        Sat_Cli_Cliente_Telefonos
+                                        Sat_Cli_Cliente
                                     ) AS C 
                                     WHERE 
                                     C.UltimoRegistro = 1
@@ -130,7 +147,7 @@ dfRegistrosNuevos = spark.sql(f"""
 # En caso de que el Data Frame de registros nuevos Si tenga nuevos clientes, se procede a insertarlos en la tabla 
 # delta, caso contrario el proceso finaliza sin insercciones
 if dfRegistrosNuevos.count() > 0:
-    dfHub_Cli_Cliente = DeltaTable.forName(spark, f"{catalogoDataVault}.reg.Sat_Cli_Cliente_Telefonos")
+    dfHub_Cli_Cliente = DeltaTable.forName(spark, f"{catalogoDataVault}.reg.Sat_Cli_Cliente")
     dfHub_Cli_Cliente.alias("A").merge(
         dfRegistrosNuevos.alias("B"), 
         "A.Hk_Cliente = B.Hk_Cliente AND A.HkDiff = B.HkDiff"
@@ -145,8 +162,9 @@ if dfRegistrosNuevos.count() > 0:
 # MAGIC -- Validamos los datos
 # MAGIC
 # MAGIC SELECT 
-# MAGIC   COUNT(*) AS Q
+# MAGIC   * 
 # MAGIC FROM 
-# MAGIC   Sat_Cli_Cliente_Telefonos
+# MAGIC   Sat_Cli_Cliente
+# MAGIC LIMIT 50 
 # MAGIC
 # MAGIC       
